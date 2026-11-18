@@ -1,5 +1,6 @@
 """GUI model/widget regression checks. Does not touch SSH services."""
 import argparse
+import base64
 import json
 from pathlib import Path
 import sys
@@ -17,7 +18,7 @@ scratch.mkdir(parents=True)
 source = Path(__file__).resolve().parents[2] / 'contrib/win32/openssh'
 sys.path.insert(0, str(source))
 from input_log_gui import ALL_CHANNELS, Recording, ReaderWindow, visible_text
-from input_log_reader import decoded_record_stream
+from input_log_reader import decode_base64, decoded_record_stream, powershell_commands
 
 
 def event(sequence, data, channel=1, kind='stdin'):
@@ -34,6 +35,36 @@ def fixture(name, records):
 
 
 class ModelTests(unittest.TestCase):
+    def test_powershell_base64_and_manual_utf8(self):
+        command = 'Write-Output "中文"\nGet-Date'
+        encoded = base64.b64encode(command.encode('utf-16-le')).decode()
+        self.assertEqual(powershell_commands(f'pwsh -ec "{encoded}"'), [command])
+        self.assertEqual(powershell_commands(f'& "C:\\tools\\PowerShell.exe" -NoProfile -EncodedCommand {encoded}'), [command])
+        self.assertEqual(powershell_commands(f'other-tool -e {encoded}'), [])
+        self.assertEqual(powershell_commands('powershell -e !bad'), [])
+        self.assertEqual(decode_base64('5Lit\n5paH', 'utf-8'), '中文')
+        with self.assertRaises(ValueError):
+            decode_base64('!bad', 'utf-8')
+
+    def test_powershell_fragments_are_joined_within_channels_and_exported(self):
+        command = 'Write-Output "中文"'
+        encoded = base64.b64encode(command.encode('utf-16-le'))
+        prefix = b'powershell -NoProfile -EncodedCommand '
+        path = fixture('split-encoded.jsonl', [
+            event(0, prefix[:22]), event(1, b'no cross-channel join\r', 2),
+            event(2, prefix[22:] + encoded[:13]), event(3, encoded[13:] + b'\r'),
+            event(4, prefix + encoded[:7], 3, 'exec'), event(5, encoded[7:], 3, 'exec'),
+        ])
+        model = Recording.load(path)
+        self.assertEqual(model.decoded, {3: command, 5: command})
+        self.assertEqual(model.filter(channel=1, query='中文'), [3])
+        target = scratch / 'decoded-export.txt'
+        model.export_text(target, model.filter(channel=1, query='中文'))
+        self.assertIn(command, target.read_text('utf-8'))
+        raw = scratch / 'decoded-raw.bin'
+        model.export_stdin(raw, 1)
+        self.assertEqual(raw.read_bytes(), prefix + encoded + b'\r')
+
     def test_unicode_controls_and_stream_decoder_preserves_original_bytes(self):
         path = fixture('unicode.jsonl', [event(0, '中'.encode()[:1]),
             event(1, '中'.encode()[1:] + b'\r\x1b[2J\x00')])
@@ -105,11 +136,38 @@ class WidgetTests(unittest.TestCase):
 
     def load(self, path):
         self.app.open_path(path)
+        self.wait_for_recording()
+
+    def wait_for_recording(self):
         deadline = time.monotonic() + 5
         while self.app.model is None and not self.errors and time.monotonic() < deadline:
             self.root.update()
             time.sleep(.01)
         self.assertIsNotNone(self.app.model, self.errors)
+
+    def test_open_folder_switch_and_rescan(self):
+        folder = scratch / 'multiple recordings'
+        folder.mkdir()
+        first = fixture('folder-one.jsonl', [event(0, b'first')])
+        second = fixture('folder-two.jsonl', [event(0, b'second')])
+        (folder / first.name).write_bytes(first.read_bytes())
+        (folder / second.name).write_bytes(second.read_bytes())
+        (folder / 'ignored.txt').write_text('not a recording')
+        with patch('input_log_gui.filedialog.askdirectory', return_value=str(folder)):
+            self.app.choose_folder()
+        self.wait_for_recording()
+        self.assertEqual(set(self.app.folder_box['values']), {first.name, second.name})
+        index = list(self.app.folder_box['values']).index(first.name)
+        self.app.folder_box.current(index)
+        self.app.select_folder_record()
+        self.wait_for_recording()
+        self.assertEqual(self.app.model.path, folder / first.name)
+        self.assertIn('first', self.app.detail.get('1.0', 'end'))
+        (folder / 'new.jsonl').write_bytes(first.read_bytes())
+        self.app.refresh()
+        self.wait_for_recording()
+        self.assertEqual(len(self.app.folder_box['values']), 3)
+        self.assertEqual(self.app.model.path, folder / first.name)
 
     def test_load_select_filter_and_clear(self):
         self.load(fixture('widgets.jsonl', [event(0, '中文指令'.encode(), kind='exec'), event(1, b'other', 2)]))

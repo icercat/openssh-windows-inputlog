@@ -123,12 +123,15 @@ All following checks passed against the final executables:
   GUI/CLI PE subsystem types and the GUI's headless Tcl runtime check.
   This simulates missing external Python; a separate clean Windows VM was not
   used. No changes were made to the machine's installed Python.
-- Eleven GUI model/widget tests cover Unicode and visible controls, channel/
+- Fourteen GUI model/widget tests cover Unicode and visible controls, channel/
   event/search filters, snapshot-consistent raw export, UTF-8 text export,
   overwrite protection, corrupt files, size limits, loading/selection, native
   save callbacks, pagination across 501 events, stale-data clearing after
   errors, and export-button visibility at the minimum window size. The shared
   stream decoder is also checked for retaining raw input bytes.
+  Additional cases cover PowerShell UTF-16LE Base64, raw UTF-8 Base64, split
+  SSH events, decoded text search/export, and switching or refreshing multiple
+  recordings from a folder.
 - A real bundled GUI preview was opened with a synthetic SSH recording. Chinese
   input selection/details and the native text-save dialog were inspected. The
   preview did not access or change an installed SSH service.

@@ -85,8 +85,9 @@ Get-ChildItem .\input-logs\*.jsonl
 ```
 
 Double-click the package's **read-input-log.exe** to open the Traditional Chinese
-GUI. Click **開啟紀錄檔…**, select a recording, and use the search/channel/event
-filters or export buttons. No Python installation is needed. For console use:
+GUI. Open one recording with **開啟紀錄檔…** or browse a folder with **開啟資料夾…**.
+Use the **Base64 解碼** tab to inspect PowerShell encoded commands. No Python
+installation is needed. For console use:
 
 ```powershell
 .\read-input-log-cli.exe '.\input-logs\input-123-example.jsonl' > readable.txt

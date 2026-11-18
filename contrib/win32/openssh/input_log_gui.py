@@ -8,7 +8,8 @@ import threading
 import tkinter as tk
 from tkinter import filedialog, font as tkfont, messagebox, ttk
 
-from input_log_reader import decoded_record_stream, read_record_stream
+from input_log_reader import (decode_base64, decoded_powershell_events, decoded_record_stream,
+                              powershell_commands, read_record_stream)
 
 MAX_FILE_BYTES = 64 * 1024 * 1024
 MAX_RECORDS = 100_000
@@ -21,12 +22,14 @@ EVENTS = {
 }
 
 
-def visible_text(value):
+def visible_text(value, multiline=False):
     """Keep Unicode readable while exposing controls, bidi marks and backslashes."""
     escapes = {'\\': '\\\\', '\n': '\\n', '\r': '\\r', '\t': '\\t', '\b': '\\b'}
     result = []
     for character in str(value):
-        if character in escapes:
+        if multiline and character in ('\\', '\n', '\t'):
+            result.append(character)
+        elif character in escapes:
             result.append(escapes[character])
         elif character.isprintable():
             result.append(character)
@@ -49,6 +52,9 @@ class Recording:
         self.channels = sorted({r['channel'] for r in raw[1:]})
         self.events = list(decoded_record_stream(raw))[1:]
         self.text = [visible_text(r.get('text', '')) for r in self.events]
+        self.decoded = {index: '\n\n'.join(visible_text(command, multiline=True)
+                                          for command in commands)
+                        for index, commands in decoded_powershell_events(self.events).items()}
         self.by_sequence = {r['sequence']: r for r in raw[1:]}
         self.stdin_bytes = sum(len(r['data']) for r in raw[1:] if r['event'] == 'stdin')
 
@@ -73,6 +79,7 @@ class Recording:
                 if (channel is None or r.get('channel') == channel)
                 and (event is None or r.get('event') == event)
                 and (not query or query in self.text[i].casefold()
+                     or query in self.decoded.get(i, '').casefold()
                      or query in str(r.get('time', '')).casefold()
                      or query in str(r.get('event', '')).casefold())]
 
@@ -86,7 +93,10 @@ class Recording:
                 record = self.events[i]
                 output.write(f"[{visible_text(record.get('time', ''))}] #{record.get('sequence', '—')} "
                              f"頻道 {record.get('channel', '—')}  {record['event']} "
-                             f"({record.get('bytes', 0)} bytes)\n{self.text[i]}\n\n")
+                             f"({record.get('bytes', 0)} bytes)\n{self.text[i]}\n")
+                if i in self.decoded:
+                    output.write(f"Base64 解碼（UTF-16LE）\n{self.decoded[i]}\n")
+                output.write('\n')
 
     def export_stdin(self, path, channel):
         if channel not in self.channels:
@@ -102,6 +112,8 @@ class ReaderWindow:
         self.root = root
         self.model = None
         self.path = None
+        self.folder = None
+        self.folder_files = []
         self.indices = []
         self.page = 0
         self.load_token = 0
@@ -135,11 +147,20 @@ class ReaderWindow:
         titlebar.grid(row=0, column=0, sticky='ew')
         ttk.Label(titlebar, text='SSH 輸入紀錄', style='Title.TLabel').pack(side='left')
         ttk.Button(titlebar, text='開啟紀錄檔…', command=self.choose_file).pack(side='right')
+        ttk.Button(titlebar, text='開啟資料夾…', command=self.choose_folder).pack(side='right', padx=(6, 0))
+        ttk.Button(titlebar, text='Base64 解碼…', command=self.open_decoder).pack(side='right', padx=(6, 0))
         self.refresh_button = ttk.Button(titlebar, text='重新讀取', command=self.refresh, state='disabled')
         self.refresh_button.pack(side='right', padx=8)
-        ttk.Label(outer, text='查看指令與終端輸入，依頻道搜尋並匯出紀錄。', style='Muted.TLabel').grid(row=1, column=0, sticky='w', pady=(3, 12))
+        self.folder_bar = ttk.Frame(outer)
+        self.folder_bar.columnconfigure(1, weight=1)
+        ttk.Label(self.folder_bar, text='紀錄檔').grid(row=0, column=0, padx=(0, 8))
+        self.folder_box = ttk.Combobox(self.folder_bar, state='readonly')
+        self.folder_box.grid(row=0, column=1, sticky='ew')
+        self.folder_box.bind('<<ComboboxSelected>>', self.select_folder_record)
+        self.folder_count = ttk.Label(self.folder_bar, style='Muted.TLabel')
+        self.folder_count.grid(row=0, column=2, padx=(8, 0))
         self.file_label = ttk.Label(outer, text='尚未開啟紀錄檔', style='Muted.TLabel', wraplength=1080)
-        self.file_label.grid(row=2, column=0, sticky='w', pady=(0, 12))
+        self.file_label.grid(row=2, column=0, sticky='ew', pady=(10, 12))
 
         metadata = ttk.Frame(outer)
         metadata.grid(row=3, column=0, sticky='ew', pady=(0, 14))
@@ -201,10 +222,11 @@ class ReaderWindow:
 
         detail_frame = ttk.Frame(panes, padding=(0, 8, 0, 0))
         panes.add(detail_frame, weight=2)
-        notebook = ttk.Notebook(detail_frame)
-        notebook.pack(fill='both', expand=True)
-        self.detail = self.text_tab(notebook, '輸入內容', font=(self.ui_font, 11))
-        self.hex_detail = self.text_tab(notebook, '原始位元組')
+        self.notebook = ttk.Notebook(detail_frame)
+        self.notebook.pack(fill='both', expand=True)
+        self.detail = self.text_tab(self.notebook, '輸入內容', font=(self.ui_font, 11))
+        self.decoded_detail = self.text_tab(self.notebook, 'Base64 解碼', font=(self.ui_font, 11))
+        self.hex_detail = self.text_tab(self.notebook, '原始位元組')
 
         bottom = ttk.Frame(outer)
         bottom.grid(row=6, column=0, sticky='ew', pady=(12, 0))
@@ -257,33 +279,87 @@ class ReaderWindow:
         widget.insert('1.0', text)
         widget.configure(state='disabled')
 
-    def choose_file(self):
+    def start_folder(self):
         candidates = [Path.cwd() / 'input-logs', Path(sys.executable).parent.parent.parent / 'input-logs']
-        folder = self.path.parent if self.path else next((p for p in candidates if p.is_dir()), Path.cwd())
-        path = filedialog.askopenfilename(parent=self.root, title='選取 SSH 輸入紀錄', initialdir=str(folder),
+        if self.folder:
+            return self.folder
+        if self.path:
+            return self.path.parent
+        return next((p for p in candidates if p.is_dir()), Path.cwd())
+
+    def choose_file(self):
+        path = filedialog.askopenfilename(parent=self.root, title='選取 SSH 輸入紀錄', initialdir=str(self.start_folder()),
                                            filetypes=[('InputLog1 紀錄', '*.jsonl'), ('所有檔案', '*.*')])
         if path:
             self.open_path(path)
 
-    def open_path(self, path):
-        self.path = Path(path).resolve()
+    def choose_folder(self):
+        path = filedialog.askdirectory(parent=self.root, title='選取 SSH 紀錄資料夾',
+                                       initialdir=str(self.start_folder()), mustexist=True)
+        if path:
+            self.open_folder(path)
+
+    def open_folder(self, path, preferred=None):
+        try:
+            folder = Path(path).resolve()
+            entries = []
+            for file in folder.iterdir():
+                if file.suffix.casefold() == '.jsonl' and file.is_file():
+                    try:
+                        entries.append((file.stat().st_mtime_ns, file))
+                    except FileNotFoundError:
+                        continue
+        except OSError as error:
+            messagebox.showerror('無法開啟資料夾', str(error), parent=self.root)
+            return
+        self.folder = folder
+        self.folder_files = [file for _, file in sorted(entries, reverse=True)]
+        self.folder_box.configure(values=[file.name for file in self.folder_files])
+        self.folder_count.configure(text=f'{len(self.folder_files):,} 個檔案')
+        self.folder_bar.grid(row=1, column=0, sticky='ew', pady=(10, 0))
+        if self.folder_files:
+            index = self.folder_files.index(preferred) if preferred in self.folder_files else 0
+            self.folder_box.current(index)
+            self.select_folder_record()
+        else:
+            self.folder_box.set('')
+            self.path = None
+            self.reset_recording()
+            self.refresh_button.configure(state='normal')
+            self.file_label.configure(text=str(folder))
+            self.status.set('資料夾中沒有 .jsonl 紀錄檔。')
+
+    def select_folder_record(self, event=None):
+        index = self.folder_box.current()
+        if 0 <= index < len(self.folder_files):
+            self.open_path(self.folder_files[index], keep_folder=True)
+
+    def reset_recording(self):
         self.load_token += 1
-        token = self.load_token
-        selected_path = self.path
         self.model = None
         self.indices = []
         self.channel.set(ALL_CHANNELS)
         self.channel_box.configure(values=[ALL_CHANNELS])
         self.event.set('全部事件')
         self.query.set('')
-        self.file_label.configure(text=visible_text(self.path))
         for value in self.metadata:
             value.set('—')
-        self.status.set('正在讀取與驗證紀錄…')
         self.refresh_button.configure(state='disabled')
         self.text_button.configure(state='disabled')
         self.raw_button.configure(state='disabled')
         self.render_page()
+
+    def open_path(self, path, keep_folder=False):
+        if not keep_folder:
+            self.folder = None
+            self.folder_files = []
+            self.folder_bar.grid_remove()
+        self.path = Path(path).resolve()
+        self.reset_recording()
+        token = self.load_token
+        selected_path = self.path
+        self.file_label.configure(text=str(self.path))
+        self.status.set('正在讀取與驗證紀錄…')
 
         def load():
             try:
@@ -359,6 +435,7 @@ class ReaderWindow:
         if children:
             self.table.delete(*children)
         self.set_text(self.detail, '選取一筆事件以查看完整輸入內容。')
+        self.set_text(self.decoded_detail, '')
         self.set_text(self.hex_detail, '')
         pages = max(1, (len(self.indices) + PAGE_SIZE - 1) // PAGE_SIZE)
         self.page = max(0, min(self.page, pages - 1))
@@ -366,13 +443,15 @@ class ReaderWindow:
         self.previous_button.configure(state='normal' if self.page > 0 else 'disabled')
         self.next_button.configure(state='normal' if self.page + 1 < pages else 'disabled')
         if not self.indices or self.model is None:
-            self.empty_label.configure(text='沒有符合篩選條件的事件' if self.model else '按「開啟紀錄檔」選取 .jsonl 檔案')
+            self.empty_label.configure(text='沒有符合篩選條件的事件' if self.model else '開啟 .jsonl 紀錄檔或資料夾')
             self.empty_label.place(relx=.5, rely=.5, anchor='center')
             return
         self.empty_label.place_forget()
         for number, i in enumerate(self.indices[self.page * PAGE_SIZE:(self.page + 1) * PAGE_SIZE]):
             record = self.model.events[i]
             text = self.model.text[i]
+            if i in self.model.decoded:
+                text = '[Base64] ' + visible_text(self.model.decoded[i][:180])
             self.table.insert('', 'end', iid=str(i), values=(record.get('sequence', '—'),
                 visible_text(record.get('time', '')), record.get('channel', '—'), record['event'],
                 record.get('bytes', 0), text[:180] + ('…' if len(text) > 180 else '')),
@@ -389,6 +468,10 @@ class ReaderWindow:
         i = int(selected[0])
         record = self.model.events[i]
         self.set_text(self.detail, self.model.text[i] or '（此事件沒有輸入文字）')
+        decoded = self.model.decoded.get(i)
+        self.set_text(self.decoded_detail, decoded if decoded is not None else '（此事件未辨識到 PowerShell Base64 指令）')
+        if decoded is not None and self.notebook.index('current') == 0:
+            self.notebook.select(self.decoded_detail.master)
         data = self.model.by_sequence.get(record.get('sequence'), {}).get('data', b'')
         lines = []
         for offset in range(0, len(data), 16):
@@ -398,8 +481,47 @@ class ReaderWindow:
         self.set_text(self.hex_detail, '\n'.join(lines) or '（沒有對應的原始位元組）')
 
     def refresh(self):
-        if self.path and str(self.refresh_button['state']) != 'disabled':
+        if str(self.refresh_button['state']) == 'disabled':
+            return
+        if self.folder:
+            self.open_folder(self.folder, preferred=self.path)
+        elif self.path:
             self.open_path(self.path)
+
+    def open_decoder(self):
+        dialog = tk.Toplevel(self.root)
+        dialog.title('Base64 解碼')
+        dialog.geometry('720x520')
+        dialog.minsize(490, 360)
+        dialog.transient(self.root)
+        content = ttk.Frame(dialog, padding=14)
+        content.pack(fill='both', expand=True)
+        ttk.Label(content, text='貼上 Base64 或完整的 PowerShell -EncodedCommand 指令').pack(anchor='w')
+        payload = tk.Text(content, height=7, wrap='char', font=(self.ui_font, 10))
+        payload.pack(fill='both', expand=True, pady=(5, 8))
+        toolbar = ttk.Frame(content)
+        toolbar.pack(fill='x', pady=(0, 8))
+        ttk.Label(toolbar, text='純 Base64 文字編碼').pack(side='left', padx=(0, 6))
+        encoding = ttk.Combobox(toolbar, values=('UTF-8', 'UTF-16LE'), state='readonly', width=10)
+        encoding.current(0)
+        encoding.pack(side='left')
+        output = tk.Text(content, height=9, wrap='word', font=(self.ui_font, 11), state='disabled')
+
+        def decode():
+            self.set_text(output, '')
+            value = payload.get('1.0', 'end-1c')
+            try:
+                commands = powershell_commands(value)
+                result = '\n\n'.join(commands) if commands else decode_base64(
+                    value, 'utf-16-le' if encoding.current() == 1 else 'utf-8')
+            except ValueError as error:
+                messagebox.showerror('無法解碼', str(error), parent=dialog)
+                return
+            self.set_text(output, visible_text(result, multiline=True))
+
+        ttk.Button(toolbar, text='解碼', command=decode).pack(side='left', padx=8)
+        output.pack(fill='both', expand=True)
+        payload.focus_set()
 
     def save_text(self):
         if self.model is None:
@@ -451,6 +573,9 @@ def main():
     root.withdraw()
     window = ReaderWindow(root)
     if args.log:
-        window.open_path(args.log)
+        if args.log.is_dir():
+            window.open_folder(args.log)
+        else:
+            window.open_path(args.log)
     root.after(0, root.deiconify)
     root.mainloop()

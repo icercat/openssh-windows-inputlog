@@ -24,6 +24,19 @@ Double-click **read-input-log.exe**. No terminal command is needed.
    a new UTF-8 text file. **匯出頻道原始輸入…** writes the entire selected channel's
    stdin snapshot, regardless of the event/search filter, to a new binary file.
 
+To browse multiple recordings, click **開啟資料夾…** and switch between
+`.jsonl` files with the **紀錄檔** dropdown. The list shows files directly
+in the selected folder, newest modified first. Only the selected file is
+loaded. **重新讀取** rescans the folder and reloads the selected file.
+
+PowerShell `-EncodedCommand` payloads are decoded as UTF-16LE and shown in
+the **Base64 解碼** tab. The viewer joins input fragments within each channel
+up to a line ending and displays the result on the final event of that line.
+Decoded commands are searchable and included in text exports. The original
+input remains available in the **輸入內容** and **原始位元組** tabs.
+For a pasted command or standalone Base64 text, use **Base64 解碼…** in the
+toolbar. For standalone Base64, choose UTF-8 or UTF-16LE before decoding.
+
 Neither export overwrites an existing file. To export raw input, first select
 one channel in the channel dropdown. No recorded command is executed by the viewer.
 

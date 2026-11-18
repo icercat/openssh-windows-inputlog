@@ -1,9 +1,107 @@
 #!/usr/bin/env python3
 """Decode Windows OpenSSH InputLog1 JSONL recordings."""
 import argparse
+import base64
+import binascii
 import codecs
+from itertools import groupby
 import json
 from pathlib import Path
+import re
+
+
+MAX_ENCODED_LINE = 128 * 1024
+POWERSHELL_EXE = re.compile(r"""(?<![\w.-])(?:powershell|pwsh)(?:\.exe)?["']?(?=[ \t])""", re.IGNORECASE)
+ENCODED_OPTION = re.compile(r'(?<=[ \t])-(?:encodedcommand|enc|ec|e)[ \t]+', re.IGNORECASE)
+BASE64_ARGUMENT = re.compile(r"""(?:"([A-Za-z0-9+/=\s]+)"|'([A-Za-z0-9+/=\s]+)'|([A-Za-z0-9+/=]+))(?=$|[\s;&|<>"'])""")
+LINE_END = re.compile(r'[\r\n]')
+
+
+def decode_base64(value, encoding):
+    if len(value) > MAX_ENCODED_LINE:
+        raise ValueError('Base64 輸入超過 128 KiB。')
+    payload = ''.join(value.split())
+    if not payload:
+        raise ValueError('請輸入 Base64 內容。')
+    try:
+        data = base64.b64decode(payload, validate=True)
+    except (ValueError, binascii.Error) as error:
+        raise ValueError('Base64 格式不正確。') from error
+    try:
+        return data.decode(encoding).removeprefix('\ufeff')
+    except UnicodeDecodeError as error:
+        raise ValueError(f'解碼結果不是有效的 {encoding} 文字。') from error
+
+
+def powershell_commands(line):
+    if len(line) > MAX_ENCODED_LINE:
+        return []
+    commands = []
+    for segment in re.split(r'[\r\n;&|<>]', line):
+        executable = POWERSHELL_EXE.search(segment)
+        if executable is None:
+            continue
+        option = ENCODED_OPTION.search(segment, executable.end())
+        if option is None:
+            continue
+        argument = BASE64_ARGUMENT.match(segment, option.end())
+        if argument:
+            payload = next(group for group in argument.groups() if group is not None)
+            try:
+                commands.append(decode_base64(payload, 'utf-16-le'))
+            except ValueError:
+                continue
+    return commands
+
+
+def decoded_powershell_events(events):
+    """Map each detected command to the final event of its input line."""
+    results = {}
+    pending_stdin = {}
+
+    def scan(index, fragments):
+        commands = powershell_commands(''.join(fragments))
+        if commands:
+            results.setdefault(index, []).extend(commands)
+
+    for (kind, channel), group in groupby(
+            enumerate(events), key=lambda item: (item[1]['event'], item[1].get('channel'))):
+        if kind in ('exec', 'effective-command'):
+            fragments = []
+            length = 0
+            for index, record in group:
+                fragment = record['text']
+                length += len(fragment)
+                if length <= MAX_ENCODED_LINE:
+                    fragments.append(fragment)
+            if length <= MAX_ENCODED_LINE:
+                scan(index, fragments)
+            continue
+
+        for index, record in group:
+            if kind == 'close':
+                pending = pending_stdin.pop(channel, None)
+                if pending and pending[1] <= MAX_ENCODED_LINE:
+                    scan(pending[2], pending[0])
+            elif kind == 'stdin':
+                fragments, length, last_index = pending_stdin.get(channel, ([], 0, index))
+                parts = LINE_END.split(record['text'])
+                for part_index, part in enumerate(parts):
+                    if part:
+                        length += len(part)
+                        if length <= MAX_ENCODED_LINE:
+                            fragments.append(part)
+                        last_index = index
+                    if part_index + 1 < len(parts):
+                        if fragments and length <= MAX_ENCODED_LINE:
+                            scan(last_index, fragments)
+                        fragments, length = [], 0
+                pending_stdin[channel] = fragments, length, last_index
+
+    for fragments, length, index in pending_stdin.values():
+        if fragments and length <= MAX_ENCODED_LINE:
+            scan(index, fragments)
+    return results
 
 
 def read_records(path):

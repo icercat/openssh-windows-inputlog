@@ -21,6 +21,8 @@ The Windows package includes a Traditional Chinese GUI (`read-input-log.exe`),
 a console reader (`read-input-log-cli.exe`) and their shared runtime folder.
 Double-click the GUI to open recordings, inspect/search input, and export text
 or exact stdin bytes. No Python installation is required.
+The GUI can browse a folder of recordings and decode PowerShell
+`-EncodedCommand` payloads for inspection.
 
 The upstream project's README follows.
 
