@@ -457,6 +457,7 @@
     <ClCompile Include="$(OpenSSH-Src-Path)gss-serv.c" />
     <ClCompile Include="$(OpenSSH-Src-Path)loginrec.c" />
     <ClCompile Include="$(OpenSSH-Src-Path)monitor.c" />
+    <ClCompile Include="..\win32compat\session-input-log.c" />
     <ClCompile Include="$(OpenSSH-Src-Path)monitor_wrap.c" />
     <ClCompile Include="$(OpenSSH-Src-Path)platform.c" />
     <ClCompile Include="$(OpenSSH-Src-Path)sandbox-capsicum.c" />

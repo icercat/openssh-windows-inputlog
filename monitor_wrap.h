@@ -89,6 +89,9 @@ void mm_audit_run_command(const char *);
 #endif
 
 struct Session;
+#ifdef WINDOWS
+void mm_session_input_log(unsigned int, unsigned int, const u_char *, size_t);
+#endif
 void mm_terminate(void);
 int mm_pty_allocate(int *, int *, char *, size_t);
 void mm_session_pty_cleanup2(struct Session *);

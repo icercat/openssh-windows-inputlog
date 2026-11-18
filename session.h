@@ -36,6 +36,10 @@ struct Session {
 	Authctxt *authctxt;
 	pid_t	pid;
 	int	forced;
+#ifdef WINDOWS
+	int input_log_active;
+	u_int input_log_id;
+#endif
 
 	/* tty */
 	char	*term;

@@ -93,6 +93,11 @@ typedef struct Channel Channel;
 
 typedef void channel_open_fn(struct ssh *, int, int, void *);
 typedef void channel_callback_fn(struct ssh *, int, int, void *);
+#ifdef WINDOWS
+typedef void channel_data_observer_fn(struct ssh *, struct Channel *,
+    const u_char *, size_t, void *);
+#endif
+
 typedef int channel_infilter_fn(struct ssh *, struct Channel *, char *, int);
 typedef void channel_filter_cleanup_fn(struct ssh *, int, void *);
 typedef u_char *channel_outfilter_fn(struct ssh *, struct Channel *,
@@ -195,6 +200,12 @@ struct Channel {
 	channel_callback_fn	*detach_user;
 	int			detach_close;
 	struct channel_confirms	status_confirms;
+
+#ifdef WINDOWS
+	/* Server-only observation of validated, decrypted session input. */
+	channel_data_observer_fn *received_data_observer;
+	void *received_data_observer_ctx;
+#endif
 
 	/* filter */
 	channel_infilter_fn	*input_filter;

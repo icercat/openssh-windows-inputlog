@@ -129,6 +129,43 @@ mm_log_handler(LogLevel level, int forced, const char *msg, void *ctx)
 	sshbuf_free(log_msg);
 }
 
+#ifdef WINDOWS
+#include "session-input-log.h"
+
+/* The parent owns the log file; the session user never receives its handle. */
+void
+mm_session_input_log(unsigned int event, unsigned int channel,
+    const u_char *data, size_t length)
+{
+	struct sshbuf *m;
+	u_int success;
+	size_t chunk;
+	int r;
+
+	if ((m = sshbuf_new()) == NULL)
+		fatal_f("sshbuf_new");
+	do {
+		chunk = MIN(length, W32_INPUT_LOG_MAX_CHUNK);
+		sshbuf_reset(m);
+		if ((r = sshbuf_put_u32(m, event)) != 0 ||
+		    (r = sshbuf_put_u32(m, channel)) != 0 ||
+		    (r = sshbuf_put_string(m, data, chunk)) != 0)
+			fatal_fr(r, "assemble input recording");
+		mm_request_send(pmonitor->m_recvfd, MONITOR_REQ_SESSION_INPUT, m);
+		mm_request_receive_expect(pmonitor->m_recvfd,
+		    MONITOR_ANS_SESSION_INPUT, m);
+		if ((r = sshbuf_get_u32(m, &success)) != 0 || sshbuf_len(m) != 0)
+			fatal_f("invalid input recording reply");
+		if (!success)
+			fatal_f("input recording unavailable; session stopped");
+		if (chunk != 0)
+			data += chunk;
+		length -= chunk;
+	} while (length != 0);
+	sshbuf_free(m);
+}
+#endif
+
 static void
 mm_reap(void)
 {

@@ -1,5 +1,22 @@
 # Portable OpenSSH
 
+## Windows InputLog1 fork
+
+This fork adds opt-in file recording of Windows SSH shell/exec input, including
+direct connections over Tailscale. Recordings are written by the privileged
+monitor; an included reader decodes the lossless JSONL files.
+
+- [Install on the destination Windows server](contrib/win32/openssh/INSTALL.md)
+- [Recording format, configuration, and scope](contrib/win32/openssh/INPUT-RECORDING.md)
+- [Build inputs and validation](contrib/win32/openssh/BUILD-AND-TEST.md)
+
+Use the complete matching binary package with the installer. A GitHub source ZIP
+contains source code and must be built first. This is an experimental, unsigned
+development fork; it is not an official Microsoft release. The installer is run
+locally on the target server and keeps the previous server available for rollback.
+
+The upstream project's README follows.
+
 [![C/C++ CI](../../actions/workflows/c-cpp.yml/badge.svg)](../../actions/workflows/c-cpp.yml)
 [![VM CI](../../actions/workflows/vm.yml/badge.svg)](../../actions/workflows/vm.yml)
 [![C/C++ CI self-hosted](https://github.com/openssh/openssh-portable-selfhosted/actions/workflows/selfhosted.yml/badge.svg)](https://github.com/openssh/openssh-portable-selfhosted/actions/workflows/selfhosted.yml)

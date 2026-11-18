@@ -69,7 +69,7 @@
 #include "digest.h"
 #include "version.h"
 
-#define SSHD_CONFIG_BLOB_VERSION	1
+#define SSHD_CONFIG_BLOB_VERSION	2 /* input-recording extension */
 
 #if !defined(SSHD_PAM_SERVICE)
 # define SSHD_PAM_SERVICE		"sshd"
@@ -1465,6 +1465,16 @@ process_server_config_line_depth(ServerOptions *options, char *line,
 		intptr = &options->gss_strict_acceptor;
 		goto parse_flag;
 #endif /* GSSAPI */
+
+#ifdef WINDOWS
+	case sLogSessionInput:
+		intptr = &options->log_session_input;
+		goto parse_flag;
+
+	case sSessionInputLogDirectory:
+		charptr = &options->session_input_log_directory;
+		goto parse_filename;
+#endif
 
 	case sPasswordAuthentication:
 		intptr = &options->password_authentication;
@@ -4395,6 +4405,9 @@ dump_config(ServerOptions *o)
 	dump_cfg_fmtint(sFingerprintHash, o->fingerprint_hash);
 	dump_cfg_fmtint(sExposeAuthInfo, o->expose_userauth_info);
 	dump_cfg_fmtint(sRefuseConnection, o->refuse_connection);
+#ifdef WINDOWS
+	dump_cfg_fmtint(sLogSessionInput, o->log_session_input);
+#endif
 
 	/* string arguments */
 	dump_cfg_string(sPidFile, o->pid_file);
@@ -4426,6 +4439,9 @@ dump_config(ServerOptions *o)
 #endif
 	dump_cfg_string(sSshdSessionPath, o->sshd_session_path);
 	dump_cfg_string(sSshdAuthPath, o->sshd_auth_path);
+#ifdef WINDOWS
+	dump_cfg_string(sSessionInputLogDirectory, o->session_input_log_directory);
+#endif
 	dump_cfg_string(sPerSourcePenaltyExemptList, o->per_source_penalty_exempt);
 
 	/* string arguments requiring a lookup */

@@ -93,6 +93,9 @@
 #include "sftp.h"
 #include "atomicio.h"
 #include "pal_doexec.h"
+#ifdef WINDOWS
+#include "session-input-log.h"
+#endif
 
 #if defined(KRB5) && defined(USE_AFS)
 #include <kafs.h>
@@ -137,6 +140,7 @@ void	do_motd(void);
 int	check_quietlogin(Session *, const char *);
 
 static void do_authenticated2(struct ssh *, Authctxt *);
+static Session *session_by_channel(int);
 
 static int session_pty_req(struct ssh *, Session *);
 
@@ -155,6 +159,9 @@ const char *original_command = NULL;
 static int sessions_first_unused = -1;
 static int sessions_nalloc = 0;
 static Session *sessions = NULL;
+#ifdef WINDOWS
+static u_int next_input_log_id;
+#endif
 
 #define SUBSYSTEM_NONE			0
 #define SUBSYSTEM_EXT			1
@@ -631,6 +638,18 @@ do_exec_pty(struct ssh *ssh, Session *s, const char *command)
 }
 #endif   /* !WINDOWS */
 
+#ifdef WINDOWS
+static void
+session_record_input(struct ssh *ssh, Channel *c, const u_char *data,
+    size_t length, void *ctx)
+{
+	Session *s = session_by_channel(c->self);
+	if (s == NULL || !s->input_log_active || s->chanid != c->self)
+		fatal_f("invalid input recording session");
+	mm_session_input_log(W32_INPUT_LOG_STDIN, s->input_log_id, data, length);
+}
+#endif
+
 /*
  * This is called to fork and execute a command.  If another command is
  * to be forced, execute that instead.
@@ -641,6 +660,22 @@ do_exec(struct ssh *ssh, Session *s, const char *command)
 	int ret;
 	const char *forced = NULL, *tty = NULL;
 	char session_type[1024];
+#ifdef WINDOWS
+	Channel *record_channel = NULL;
+	if (options.log_session_input == 1 && !s->is_subsystem) {
+		if ((record_channel = channel_lookup(ssh, s->chanid)) == NULL)
+			fatal_f("missing session channel");
+		if (next_input_log_id == UINT_MAX)
+			fatal_f("input recording channel counter exhausted");
+		s->input_log_id = ++next_input_log_id;
+		mm_session_input_log(command == NULL ? W32_INPUT_LOG_SHELL :
+		    W32_INPUT_LOG_EXEC, s->input_log_id, (const u_char *)command,
+		    command == NULL ? 0 : strlen(command));
+		s->input_log_active = 1;
+		record_channel->received_data_observer = session_record_input;
+		record_channel->received_data_observer_ctx = NULL;
+	}
+#endif
 
 	if (options.adm_forced_command) {
 		original_command = command;
@@ -651,6 +686,11 @@ do_exec(struct ssh *ssh, Session *s, const char *command)
 		command = auth_opts->force_command;
 		forced = "(key-option)";
 	}
+#ifdef WINDOWS
+	if (s->input_log_active && forced != NULL)
+		mm_session_input_log(W32_INPUT_LOG_EFFECTIVE, s->input_log_id,
+		    (const u_char *)command, strlen(command));
+#endif
 	s->forced = 0;
 	if (forced != NULL) {
 		s->forced = 1;
@@ -2352,6 +2392,23 @@ session_close_single_x11(struct ssh *ssh, int id, int force, void *arg)
 	s->auth_display = NULL;
 }
 
+#ifdef WINDOWS
+static void
+session_stop_input_log(struct ssh *ssh, Session *s)
+{
+	Channel *c;
+	if (!s->input_log_active)
+		return;
+	mm_session_input_log(W32_INPUT_LOG_CLOSE, s->input_log_id, NULL, 0);
+	if (s->chanid != -1 &&
+	    (c = channel_lookup(ssh, s->chanid)) != NULL) {
+		c->received_data_observer = NULL;
+		c->received_data_observer_ctx = NULL;
+	}
+	s->input_log_active = 0;
+}
+#endif
+
 static void
 session_exit_message(struct ssh *ssh, Session *s, int status)
 {
@@ -2361,6 +2418,10 @@ session_exit_message(struct ssh *ssh, Session *s, int status)
 
 	if ((c = channel_lookup(ssh, s->chanid)) == NULL)
 		fatal_f("session %d: no channel %d", s->self, s->chanid);
+#ifdef WINDOWS
+	/* Flush the final marker before an exit-status lets the client leave. */
+	session_stop_input_log(ssh, s);
+#endif
 
 	if (WIFEXITED(status)) {
 		channel_request_start(ssh, s->chanid, "exit-status", 0);
@@ -2415,6 +2476,9 @@ void
 session_close(struct ssh *ssh, Session *s)
 {
 	u_int i;
+#ifdef WINDOWS
+	session_stop_input_log(ssh, s);
+#endif
 
 	verbose("Close session: user %s from %.200s port %d id %d",
 	    s->pw->pw_name,

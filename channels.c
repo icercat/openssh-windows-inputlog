@@ -3548,6 +3548,13 @@ channel_input_data(int type, uint32_t seq, struct ssh *ssh)
 		c->local_window_exceeded = 0;
 	}
 
+#ifdef WINDOWS
+	/* Record once, before the bytes become available to the child process. */
+	if (c->received_data_observer != NULL && data_len != 0)
+		c->received_data_observer(ssh, c, data, data_len,
+		    c->received_data_observer_ctx);
+#endif
+
 	if (c->datagram) {
 		if ((r = sshbuf_put_string(c->output, data, data_len)) != 0)
 			fatal_fr(r, "channel %i: append datagram", c->self);

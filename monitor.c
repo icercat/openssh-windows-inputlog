@@ -121,6 +121,11 @@ int mm_answer_keyallowed(struct ssh *, int, struct sshbuf *);
 int mm_answer_keyverify(struct ssh *, int, struct sshbuf *);
 int mm_answer_pty(struct ssh *, int, struct sshbuf *);
 int mm_answer_pty_cleanup(struct ssh *, int, struct sshbuf *);
+#ifdef WINDOWS
+#include "session-input-log.h"
+static int mm_answer_session_input(struct ssh *, int, struct sshbuf *);
+static struct w32_input_log *session_input_log;
+#endif
 int mm_answer_term(struct ssh *, int, struct sshbuf *);
 int mm_answer_state(struct ssh *, int, struct sshbuf *);
 
@@ -224,6 +229,9 @@ struct mon_table mon_dispatch_proto20[] = {
 };
 
 struct mon_table mon_dispatch_postauth20[] = {
+#ifdef WINDOWS
+    {MONITOR_REQ_SESSION_INPUT, MON_PERMIT, mm_answer_session_input},
+#endif
     {MONITOR_REQ_STATE, MON_ONCE, mm_answer_state},
 #ifdef WITH_OPENSSL
     {MONITOR_REQ_MODULI, 0, mm_answer_moduli},
@@ -238,6 +246,50 @@ struct mon_table mon_dispatch_postauth20[] = {
 #endif
     {0, 0, NULL}
 };
+
+#ifdef WINDOWS
+static int
+mm_answer_session_input(struct ssh *ssh, int sock, struct sshbuf *m)
+{
+	u_int event, channel, success = 0;
+	u_char *data = NULL;
+	size_t length;
+	int r;
+
+	if ((r = sshbuf_get_u32(m, &event)) != 0 ||
+	    (r = sshbuf_get_u32(m, &channel)) != 0 ||
+	    (r = sshbuf_get_string(m, &data, &length)) != 0 ||
+	    sshbuf_len(m) != 0)
+		fatal_f("invalid input recording request");
+	if (options.log_session_input != 1 ||
+	    options.session_input_log_directory == NULL ||
+	    !authctxt->valid || event < W32_INPUT_LOG_SHELL ||
+	    event > W32_INPUT_LOG_EFFECTIVE || length > W32_INPUT_LOG_MAX_CHUNK ||
+	    ((event == W32_INPUT_LOG_SHELL || event == W32_INPUT_LOG_CLOSE) &&
+	    length != 0))
+		goto reply;
+	if (session_input_log == NULL &&
+	    w32_input_log_open(&session_input_log,
+	    options.session_input_log_directory, authctxt->pw->pw_name,
+	    ssh_remote_ipaddr(ssh), ssh_remote_port(ssh)) != 0) {
+		error("Cannot open input recording (Win32 error %lu)", GetLastError());
+		goto reply;
+	}
+	if (w32_input_log_record(session_input_log, event, channel, data,
+	    length) != 0) {
+		error("Cannot write input recording (Win32 error %lu)", GetLastError());
+		goto reply;
+	}
+	success = 1;
+reply:
+	free(data);
+	sshbuf_reset(m);
+	if ((r = sshbuf_put_u32(m, success)) != 0)
+		fatal_fr(r, "assemble input recording reply");
+	mm_request_send(sock, MONITOR_ANS_SESSION_INPUT, m);
+	return 0;
+}
+#endif
 
 struct mon_table *mon_dispatch;
 

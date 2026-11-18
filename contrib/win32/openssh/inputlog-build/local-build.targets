@@ -1,0 +1,21 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <TargetPlatformSdkPath>C:\Program Files (x86)\Windows Kits\10\</TargetPlatformSdkPath>
+    <TargetPlatformDisplayName>Windows SDK 10.0.26100.0</TargetPlatformDisplayName>
+    <VC_IncludePath>$(INCLUDE)</VC_IncludePath>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <PreprocessorDefinitions>HAVE_EVP_DIGESTSIGN;HAVE_EVP_DIGESTVERIFY;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <DebugInformationFormat>OldStyle</DebugInformationFormat>
+      <AdditionalIncludeDirectories>$(SolutionDir)..\win32compat\inc;$(SolutionDir)..\..\..\..\native-deps\include;$(INCLUDE);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories Condition="'$(MSBuildProjectName)' == 'win32iocompat'">$(SolutionDir)..\..\..\..\native-deps\include;$(INCLUDE);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <GenerateDebugInformation>false</GenerateDebugInformation>
+      <AdditionalOptions>/opt:ref /opt:icf /incremental:no /ignore:4099</AdditionalOptions>
+      <AdditionalDependencies>crypto.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(SolutionDir)..\..\..\..\native-deps\lib;$(LIB);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+    </Link>
+  </ItemDefinitionGroup>
+</Project>
