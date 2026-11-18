@@ -223,6 +223,10 @@ function Test-InputLogDeployment([string] $Release, [string] $Config,
     if ($version.ExitCode -ne 0 -or $version.Output -notmatch 'Win32-OpenSSH-InputLog1') {
         throw "The package is not a runnable InputLog1 build. Check the x64 Visual C++ runtime. $($version.Output)"
     }
+    $reader = Invoke-InputLogDaemon (Join-Path $Release 'read-input-log.exe') '--help'
+    if ($reader.ExitCode -ne 0 -or $reader.Output -notmatch 'raw-stdin') {
+        throw "The recording reader cannot run. Keep read-input-log.exe and read-input-log-runtime together. $($reader.Output)"
+    }
     $tail = (@($Arguments | ForEach-Object { ConvertTo-InputLogArgument $_ }) -join ' ')
     $configArgument = '-f ' + (ConvertTo-InputLogArgument $Config)
     foreach ($mode in '-t', '-T') {
@@ -363,11 +367,16 @@ function Invoke-InputLogInstall {
         }
     }
     $required = @('sshd.exe', 'sshd-session.exe', 'sshd-auth.exe', 'ssh-shellhost.exe',
-                  'sftp-server.exe', 'ssh-keygen.exe', 'crypto-57.dll', 'Install-InputLog.ps1')
+                  'sftp-server.exe', 'ssh-keygen.exe', 'crypto-57.dll', 'Install-InputLog.ps1',
+                  'read-input-log.exe')
     foreach ($name in $required) {
         $file = Join-Path $source $name
         if (!(Test-Path -LiteralPath $file -PathType Leaf)) { throw "Extract the entire x64 binary package first. Missing: $file" }
         if ((Get-Item -LiteralPath $file).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw "Package file is a reparse point: $file" }
+    }
+    $readerRuntime = Get-InputLogLocalPath (Join-Path $source 'read-input-log-runtime')
+    if (!(Test-Path -LiteralPath $readerRuntime -PathType Container)) {
+        throw 'Extract the entire binary package, including the read-input-log-runtime folder.'
     }
     if (!(Test-Path -LiteralPath $launch.Config -PathType Leaf)) { throw "Existing configuration not found: $($launch.Config)" }
     Write-Host "Target: $env:COMPUTERNAME; existing service: $ServiceName"
@@ -385,7 +394,8 @@ function Invoke-InputLogInstall {
     Protect-InputLogDirectory $backup
     Protect-InputLogDirectory $logs
     $files = $required + @('ssh.exe', 'read-input-log.py', 'INPUT-RECORDING.md', 'BUILD-AND-TEST.md',
-                           'LICENCE', 'NOTICE', 'prepare-input-log-directory.ps1')
+                           'LICENCE', 'NOTICE', 'prepare-input-log-directory.ps1', 'INSTALL.md',
+                           'README-READER.md')
     foreach ($name in $files) {
         $file = Join-Path $source $name
         if (!(Test-Path -LiteralPath $file -PathType Leaf)) { continue }
@@ -397,6 +407,7 @@ function Invoke-InputLogInstall {
     if (Test-Path -LiteralPath (Join-Path $source 'licenses')) {
         Copy-Item -LiteralPath (Join-Path $source 'licenses') -Destination $release -Recurse -ErrorAction Stop
     }
+    Copy-Item -LiteralPath $readerRuntime -Destination $release -Recurse -ErrorAction Stop
     Copy-Item -LiteralPath $launch.Config -Destination (Join-Path $backup 'sshd_config.original') -ErrorAction Stop
     $encoding = [Text.UTF8Encoding]::new($false, $true)
     $original = [IO.File]::ReadAllText($launch.Config, $encoding)

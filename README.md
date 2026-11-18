@@ -9,6 +9,7 @@ monitor; an included reader decodes the lossless JSONL files.
 - [Install on the destination Windows server](contrib/win32/openssh/INSTALL.md)
 - [Recording format, configuration, and scope](contrib/win32/openssh/INPUT-RECORDING.md)
 - [Build inputs and validation](contrib/win32/openssh/BUILD-AND-TEST.md)
+- [Windows EXE recording reader](contrib/win32/openssh/README-READER.md)
 
 Use the complete matching binary package with the installer. A GitHub source ZIP
 contains source code and must be built first. This is an experimental, unsigned
@@ -16,6 +17,8 @@ development fork; it is not an official Microsoft release. The installer is run
 locally on the target server and keeps the previous server available for rollback.
 Its default installation, recording, and backup directories are `install`,
 `input-logs`, and `backups` beneath the caller's current working directory.
+The Windows package includes `read-input-log.exe` and its runtime folder, so
+reading recordings does not require installing Python.
 
 The upstream project's README follows.
 

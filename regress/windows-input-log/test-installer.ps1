@@ -12,9 +12,13 @@ $scratch = Join-Path $TestDirectory ('installer-tests-' + [Guid]::NewGuid().ToSt
 $package = Join-Path $scratch 'package'
 [IO.Directory]::CreateDirectory($package) | Out-Null
 foreach ($name in 'sshd.exe','sshd-session.exe','sshd-auth.exe','ssh-shellhost.exe',
-                 'sftp-server.exe','ssh-keygen.exe','crypto-57.dll','Install-InputLog.ps1') {
+                 'sftp-server.exe','ssh-keygen.exe','crypto-57.dll','Install-InputLog.ps1',
+                 'read-input-log.exe') {
     [IO.File]::WriteAllText((Join-Path $package $name), "dummy-$name")
 }
+$runtimeFixture = Join-Path $package 'read-input-log-runtime'
+[IO.Directory]::CreateDirectory($runtimeFixture) | Out-Null
+[IO.File]::WriteAllText((Join-Path $runtimeFixture 'fixture.txt'), 'runtime copy fixture')
 $config = Join-Path $scratch 'original config'
 $originalText = @'
 # authentication and network settings must survive
@@ -151,6 +155,7 @@ Assert ((Get-FileHash $config).Hash -eq $originalHash) 'Source config was change
 $manifest = Get-Content (Join-Path $installed.Backup 'state.json') -Raw | ConvertFrom-Json
 Assert ($manifest.OriginalServiceCommand -eq $originalCommand) 'Original service command missing from backup'
 Assert ($manifest.FirewallRules.Count -eq 1) 'Firewall backup missing'
+Assert (Test-Path (Join-Path $installed.Release 'read-input-log-runtime\fixture.txt')) 'Reader runtime was not copied'
 Invoke-InputLogInstall -RollbackBackup $installed.Backup
 Assert ($service.PathName -eq $originalCommand -and $service.State -eq 'Running') 'Rollback did not restore old service'
 Assert ($firewallProgram -eq 'C:\old\sshd.exe') 'Rollback did not restore firewall'
@@ -174,6 +179,18 @@ $failPreflight=$true
 Assert-Throws { Invoke-InputLogInstall @options } 'preflight failure'
 Assert ($stops -eq 0 -and $changes -eq 0 -and $service.State -eq 'Running') 'Preflight failure touched the service'
 Write-Host 'PASS: failed preflight leaves the existing service running'
+
+Reset-Case
+$noRuntimePackage = Join-Path $scratch 'incomplete reader package'
+[IO.Directory]::CreateDirectory($noRuntimePackage) | Out-Null
+foreach ($file in Get-ChildItem -LiteralPath $package -File) {
+    Copy-Item -LiteralPath $file.FullName -Destination $noRuntimePackage
+}
+$brokenOptions = $options.Clone()
+$brokenOptions.SourceDirectory = $noRuntimePackage
+Assert-Throws { Invoke-InputLogInstall @brokenOptions } 'including the read-input-log-runtime folder'
+Assert ($stops -eq 0 -and $changes -eq 0) 'Incomplete reader package touched the service'
+Write-Host 'PASS: incomplete reader runtime is rejected before changing the service'
 
 Reset-Case 'Stopped' 'Disabled'
 $installed = Invoke-InputLogInstall @options

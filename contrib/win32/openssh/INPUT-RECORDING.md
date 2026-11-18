@@ -23,7 +23,8 @@ patch. No software has been installed and no running service has been changed.
 Extract the archive's contents into a protected installation directory, for
 example `C:\Program Files\OpenSSH-InputLog`. The examples below use that path.
 Keep `crypto-57.dll` alongside the executables. The bundled crypto DLL includes
-its C runtime. Python is needed only for reading/decoding the recordings.
+its C runtime. The Windows reader EXE includes its Python runtime, so no Python
+installation is required to use the server or read recordings.
 
 Use a matching set of the patched `sshd.exe`, `sshd-session.exe`, and
 `sshd-auth.exe` binaries and their dependencies. The ordinary Windows OpenSSH
@@ -141,18 +142,21 @@ Long payloads are split into records of at most 16 KiB. Concatenate `stdin`
 bytes by channel and sequence to recover the exact input stream. Concatenate
 `exec` or `effective-command` chunks to recover a long command string.
 
-Read as Administrator. The included Python 3 reader uses only the standard
-library and produces JSONL with readable text and escaped control characters:
+Read as Administrator. The included `read-input-log.exe` produces JSONL with
+readable text and escaped control characters. Keep its `read-input-log-runtime`
+directory next to the EXE; no separate Python installation is needed:
 
 ```powershell
-py .\read-input-log.py '.\input-logs\input-123-example.jsonl'
-py .\read-input-log.py '.\input-logs\input-123-example.jsonl' > readable.txt
+.\read-input-log.exe '.\input-logs\input-123-example.jsonl'
+.\read-input-log.exe '.\input-logs\input-123-example.jsonl' > readable.txt
 # Recover exact input bytes for a selected channel into a NEW file:
-py .\read-input-log.py recording.jsonl --channel 1 --raw-stdin stdin.bin
+.\read-input-log.exe recording.jsonl --channel 1 --raw-stdin stdin.bin
 ```
 
 Those reader examples use the automated installer's working-directory default.
 Substitute your chosen log path if you used the manual configuration above.
+The original `read-input-log.py` remains available as source and accepts the
+same arguments. See `README-READER.md` for the standalone Windows package.
 
 Example decoded record:
 

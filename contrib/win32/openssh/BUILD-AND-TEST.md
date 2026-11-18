@@ -16,6 +16,8 @@ not an official Microsoft release. The archive is not code-signed.
   `e18aa7016048aaec5988cedc3daea2f3f9c114760c0b7e15b18388ed3ab0a1a0386860a318a8cdbe961bb4369db28a9bf04f97b7fbafd45815693fd634`
 - zlib 1.3.2, static library (`zs.lib`), source revision
   `da607da739fa6047df13e66a2af6b8bec7c2a498` from https://github.com/madler/zlib
+- Windows reader: CPython 3.13.15 x64, PyInstaller 6.22.3; exact build-tool
+  dependencies in `inputlog-build/reader-build-requirements.txt`.
 
 The binary package includes matching `sshd.exe`, `sshd-session.exe`,
 `sshd-auth.exe`, `ssh-shellhost.exe`, `sftp-server.exe`, `ssh-keygen.exe`,
@@ -23,6 +25,9 @@ The binary package includes matching `sshd.exe`, `sshd-session.exe`,
 These server components must be kept together. The binary package includes
 `Install-InputLog.ps1` for replacement of an existing LocalSystem sshd service
 on the destination server; see `INSTALL.md`. It does not include ssh-agent.
+`read-input-log.exe` and `read-input-log-runtime/` are included in both the
+complete server package and a standalone `read-input-log-Windows-x64.zip`.
+The reader does not require Python to be installed on the destination machine.
 
 ## Rebuild
 
@@ -44,6 +49,7 @@ build-workspace/
     temp/                 # create an empty temporary directory
     build-native-deps.cmd # copy from build-recipes
     build-openssh.cmd     # copy from build-recipes
+    build-reader.cmd      # copy from build-recipes; needs Python 3.13 x64 to build
     local-build.targets   # copy from build-recipes
 ```
 
@@ -52,7 +58,9 @@ Run from `build-workspace` in Command Prompt:
 ```bat
 work\build-native-deps.cmd
 work\build-openssh.cmd
+work\build-reader.cmd
 copy work\native-deps\bin\crypto-57.dll work\openssh-portable\bin\x64\Release\
+xcopy "work\reader-dist\read-input-log\*" "work\openssh-portable\bin\x64\Release\" /E /I /Y
 ```
 
 Adjust the Visual Studio installation/toolset paths if your machine differs.
@@ -66,6 +74,15 @@ build overrides are separate from the logging feature patch. The recipes are
 provided for rebuilding; bit-identical reproducibility has not been established.
 LibreSSL is built with `USE_STATIC_MSVC_RUNTIMES=ON`; the final crypto DLL imports
 only Windows system DLLs and does not require a separate VCRUNTIME140.dll.
+
+The reader recipe creates a workspace-local Python virtual environment and
+installs the pinned packaging dependencies from PyPI. It uses PyInstaller's
+console/folder-bundle mode with `--contents-directory read-input-log-runtime`
+and no UPX compression. Keep the EXE and runtime folder together. The runtime
+is loaded from the protected installation directory, rather than extracting a
+single-file archive each time privileged logs are read. See
+[PyInstaller operating modes](https://pyinstaller.org/en/stable/operating-mode.html).
+Python is a build dependency only; the compiled reader carries its own runtime.
 
 ## Completed checks
 
@@ -95,6 +112,13 @@ All following checks passed against the final executables:
 - Nine Python reader tests: binary bytes, split UTF-8 and separate channels,
   sequence validation, length mismatch, escaped terminal controls, truncated
   JSON, partial final character, empty file, and non-object JSON.
+- Nine black-box EXE tests passed from a relocated package directory containing
+  spaces, with Python removed from PATH and PYTHONHOME/PYTHONPATH pointing to a
+  nonexistent directory: help, output matching the Python reader, Chinese text,
+  separate channels, safe escaped controls, binary extraction, refusal to
+  overwrite files, bad arguments, malformed recordings, and partial UTF-8 tails.
+  This simulates missing external Python; a separate clean Windows VM was not
+  used. No changes were made to the machine's installed Python.
 - PowerShell directory helper parsed without syntax errors. Its elevated
   deployment path was not executed in this environment.
 - Installer tests passed in Windows PowerShell 5.1 and PowerShell 7 using mock
@@ -106,6 +130,9 @@ All following checks passed against the final executables:
   handling. The real patched daemon's preflight was exercised, including
   detection of conflicting recording settings. Elevated installation was not
   executed on this PC.
+  Reader/runtime copying, rejection of an incomplete reader package before
+  changing the service, and the real reader EXE's preflight help command also
+  passed in both PowerShell versions.
 - Current-directory defaults were verified with a working folder containing
   spaces and the source package in another directory: binaries, logs, backups,
   and active configuration stay beneath that working folder, service paths are
@@ -136,3 +163,9 @@ operations, using only the supplied scratch directory and daemon preflight:
 
 Use an absolute, writable scratch directory and set TEMP/TMP to a writable
 location if your environment restricts temporary file access.
+
+Executable reader checks (after `build-reader.cmd`):
+
+```powershell
+python .\regress\windows-input-log\test-reader-exe.py --reader 'C:\build\work\reader-dist\read-input-log\read-input-log.exe' --work-directory 'C:\build\work\test-scratch'
+```

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Decode Windows OpenSSH InputLog1 JSONL. Python 3, standard library only."""
+"""Decode Windows OpenSSH InputLog1 JSONL recordings."""
 import argparse
 import codecs
 import json

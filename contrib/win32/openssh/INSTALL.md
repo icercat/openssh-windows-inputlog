@@ -24,6 +24,8 @@ The current directory is used even if you invoke the script by its full path
 from another folder. All service/configuration paths are saved as absolute
 paths so they keep working after a restart or a later change of directory.
 Keep this folder in place while the service uses it.
+The installed release includes `read-input-log.exe` and its
+`read-input-log-runtime` directory. The installer copies and checks both.
 
 The execution-policy override applies to this one PowerShell process. The
 package is an experimental, unsigned custom build. Run from a local console or
@@ -81,12 +83,16 @@ list the recordings:
 Get-ChildItem .\input-logs\*.jsonl
 ```
 
-The package's `read-input-log.py` turns a recording into readable text using
-Python 3; the server itself does not require Python:
+The package's `read-input-log.exe` turns a recording into readable text.
+You do not need to install Python:
 
 ```powershell
-py .\read-input-log.py '.\input-logs\input-123-example.jsonl' > readable.txt
+.\read-input-log.exe '.\input-logs\input-123-example.jsonl' > readable.txt
 ```
+
+Keep `read-input-log-runtime` next to the EXE. The standalone reader ZIP can
+also be extracted on another Windows x64 machine to read copied recordings.
+See `README-READER.md` for channel selection and exact input extraction.
 
 ## Roll back
 
