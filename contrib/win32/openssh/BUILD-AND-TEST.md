@@ -106,6 +106,10 @@ All following checks passed against the final executables:
   handling. The real patched daemon's preflight was exercised, including
   detection of conflicting recording settings. Elevated installation was not
   executed on this PC.
+- Current-directory defaults were verified with a working folder containing
+  spaces and the source package in another directory: binaries, logs, backups,
+  and active configuration stay beneath that working folder, service paths are
+  absolute, WhatIf creates nothing, and rollback works from another directory.
 - Source patch whitespace check and application against the exact base revision.
 
 Integration servers listened on 127.0.0.1 and ran as the current Windows user.

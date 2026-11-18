@@ -11,7 +11,10 @@ entire binary ZIP to that destination server, extract it there, and follow
 [INSTALL.md](INSTALL.md). Run `Install-InputLog.ps1` as Administrator **on the
 destination server**. It creates a separate active configuration, backs up the
 service command, switches the existing service, and supports rollback. The
-remaining setup steps in this section are the manual alternative.
+installer defaults to `install`, `input-logs`, and `backups` beneath your current
+working directory; its active configuration is kept under `backups`. Keep that
+folder in place. The remaining setup steps in this section are the manual
+alternative with explicitly selected Program Files/ProgramData locations.
 
 The supplied x64 archive is an experimental, unsigned development build for
 Windows. It is free to use. The logging source is included in the ISC-licensed
@@ -32,7 +35,7 @@ dedicated directory accessible only to SYSTEM and Administrators:
 
 ```powershell
 Set-Location 'C:\Program Files\OpenSSH-InputLog'
-.\prepare-input-log-directory.ps1
+.\prepare-input-log-directory.ps1 -LogDirectory 'C:\ProgramData\ssh\input-logs'
 ```
 
 Before editing the configuration, save the original and the existing service
@@ -142,11 +145,14 @@ Read as Administrator. The included Python 3 reader uses only the standard
 library and produces JSONL with readable text and escaped control characters:
 
 ```powershell
-py .\read-input-log.py 'C:\ProgramData\ssh\input-logs\input-123-example.jsonl'
-py .\read-input-log.py 'C:\ProgramData\ssh\input-logs\input-123-example.jsonl' > readable.txt
+py .\read-input-log.py '.\input-logs\input-123-example.jsonl'
+py .\read-input-log.py '.\input-logs\input-123-example.jsonl' > readable.txt
 # Recover exact input bytes for a selected channel into a NEW file:
 py .\read-input-log.py recording.jsonl --channel 1 --raw-stdin stdin.bin
 ```
+
+Those reader examples use the automated installer's working-directory default.
+Substitute your chosen log path if you used the manual configuration above.
 
 Example decoded record:
 

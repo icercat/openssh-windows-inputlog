@@ -14,6 +14,8 @@ Use the complete matching binary package with the installer. A GitHub source ZIP
 contains source code and must be built first. This is an experimental, unsigned
 development fork; it is not an official Microsoft release. The installer is run
 locally on the target server and keeps the previous server available for rollback.
+Its default installation, recording, and backup directories are `install`,
+`input-logs`, and `backups` beneath the caller's current working directory.
 
 The upstream project's README follows.
 

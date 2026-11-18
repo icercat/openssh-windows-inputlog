@@ -118,6 +118,31 @@ Invoke-InputLogInstall @options -WhatIf
 Assert ($stops -eq 0 -and $changes -eq 0 -and !(Test-Path $options.InstallRoot)) 'WhatIf changed something'
 Write-Host 'PASS: WhatIf performs no writes or service/firewall changes'
 
+# Omitted destination parameters use the caller's current folder, even when
+# the script and source package live elsewhere. Service paths stay absolute.
+Reset-Case
+$workingFolder = Join-Path $scratch 'current working folder'
+[IO.Directory]::CreateDirectory($workingFolder) | Out-Null
+Push-Location -LiteralPath $workingFolder
+try {
+    Invoke-InputLogInstall -SourceDirectory $package -WhatIf
+    Assert (!(Test-Path (Join-Path $workingFolder 'install'))) 'Default-path WhatIf created files'
+    $installed = Invoke-InputLogInstall -SourceDirectory $package
+    $expectedInstall = Join-Path $workingFolder 'install'
+    $expectedBackups = Join-Path $workingFolder 'backups'
+    $expectedLogs = Join-Path $workingFolder 'input-logs'
+    Assert ($installed.Release.StartsWith($expectedInstall + '\')) 'Default install root was not based on caller working directory'
+    Assert ($installed.Backup.StartsWith($expectedBackups + '\')) 'Default backup root was not based on caller working directory'
+    Assert ($installed.Logs -eq $expectedLogs) 'Default recording directory was not based on caller working directory'
+    Assert ($installed.Config.StartsWith($expectedBackups + '\')) 'Active config was not kept under the caller working directory'
+    $recordedDefaultCommand = $service.PathName
+} finally { Pop-Location }
+Assert ($service.PathName -eq $recordedDefaultCommand) 'Service command changed with working directory'
+Assert ($service.PathName.Contains($workingFolder)) 'Service command did not contain permanent absolute paths'
+Invoke-InputLogInstall -RollbackBackup $installed.Backup
+Assert ($service.PathName -eq $originalCommand) 'Current-directory default install did not roll back'
+Write-Host 'PASS: current-working-directory defaults, spaces, absolute service paths and rollback from another folder'
+
 Reset-Case
 $installed = Invoke-InputLogInstall @options
 Assert ($service.State -eq 'Running' -and $changes -eq 1 -and $stops -eq 1) 'Successful service replacement failed'

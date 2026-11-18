@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([string] $LogDirectory = "$env:ProgramData\ssh\input-logs")
+param([string] $LogDirectory = (Join-Path (Get-Location).Path 'input-logs'))
 $ErrorActionPreference = 'Stop'
 $principal = [Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
 if (!$principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {

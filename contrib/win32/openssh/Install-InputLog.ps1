@@ -7,19 +7,21 @@ Run on the destination Windows x64 server, from the extracted binary package,
 in PowerShell as Administrator. Creates a separate active configuration, keeps
 the original binaries/configuration/host keys, and restores the old service if
 activation fails. Does not install on another computer remotely.
+New installation files, recordings, and backups default to subdirectories of
+the current PowerShell working directory, resolved to permanent absolute paths.
 .EXAMPLE
 .\Install-InputLog.ps1 -WhatIf
 .EXAMPLE
 .\Install-InputLog.ps1
 .EXAMPLE
-.\Install-InputLog.ps1 -RollbackBackup 'C:\ProgramData\ssh\inputlog-backups\<id>'
+.\Install-InputLog.ps1 -RollbackBackup 'C:\SSH-InputLog\backups\<id>'
 #>
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
     [string] $SourceDirectory = $PSScriptRoot,
-    [string] $InstallRoot = "$env:ProgramFiles\OpenSSH-InputLog",
-    [string] $LogDirectory = "$env:ProgramData\ssh\input-logs",
-    [string] $BackupRoot = "$env:ProgramData\ssh\inputlog-backups",
+    [string] $InstallRoot,
+    [string] $LogDirectory,
+    [string] $BackupRoot,
     [string] $ConfigPath,
     [ValidatePattern('^[A-Za-z0-9_.-]+$')][string] $ServiceName = 'sshd',
     [string] $RollbackBackup
@@ -309,9 +311,9 @@ function Invoke-InputLogInstall {
     [CmdletBinding(SupportsShouldProcess = $true)]
     param(
         [string] $SourceDirectory = $PSScriptRoot,
-        [string] $InstallRoot = "$env:ProgramFiles\OpenSSH-InputLog",
-        [string] $LogDirectory = "$env:ProgramData\ssh\input-logs",
-        [string] $BackupRoot = "$env:ProgramData\ssh\inputlog-backups",
+        [string] $InstallRoot,
+        [string] $LogDirectory,
+        [string] $BackupRoot,
         [string] $ConfigPath,
         [ValidatePattern('^[A-Za-z0-9_.-]+$')][string] $ServiceName = 'sshd',
         [string] $RollbackBackup
@@ -333,6 +335,18 @@ function Invoke-InputLogInstall {
     if ($service.State -notin @('Running', 'Stopped')) { throw 'Wait for the existing SSH service to finish its current state transition.' }
     $launch = Get-InputLogLaunch $service $ConfigPath
     $source = Get-InputLogLocalPath $SourceDirectory
+    if (!$InstallRoot -or !$LogDirectory -or !$BackupRoot) {
+        $location = Get-Location
+        if ($location.Provider.Name -ne 'FileSystem') {
+            throw 'Run the installer from a local filesystem working directory, or provide all three destination paths.'
+        }
+        # Capture PowerShell's working directory, not the script directory or
+        # the service's working directory. Store absolute paths for restarts.
+        $workingDirectory = $location.ProviderPath
+        if (!$InstallRoot) { $InstallRoot = Join-Path $workingDirectory 'install' }
+        if (!$LogDirectory) { $LogDirectory = Join-Path $workingDirectory 'input-logs' }
+        if (!$BackupRoot) { $BackupRoot = Join-Path $workingDirectory 'backups' }
+    }
     $install = Get-InputLogLocalPath $InstallRoot
     $logs = Get-InputLogLocalPath $LogDirectory
     $backups = Get-InputLogLocalPath $BackupRoot
