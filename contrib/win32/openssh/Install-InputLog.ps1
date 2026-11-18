@@ -223,9 +223,13 @@ function Test-InputLogDeployment([string] $Release, [string] $Config,
     if ($version.ExitCode -ne 0 -or $version.Output -notmatch 'Win32-OpenSSH-InputLog1') {
         throw "The package is not a runnable InputLog1 build. Check the x64 Visual C++ runtime. $($version.Output)"
     }
-    $reader = Invoke-InputLogDaemon (Join-Path $Release 'read-input-log.exe') '--help'
+    $reader = Invoke-InputLogDaemon (Join-Path $Release 'read-input-log-cli.exe') '--help'
     if ($reader.ExitCode -ne 0 -or $reader.Output -notmatch 'raw-stdin') {
         throw "The recording reader cannot run. Keep read-input-log.exe and read-input-log-runtime together. $($reader.Output)"
+    }
+    $gui = Invoke-InputLogDaemon (Join-Path $Release 'read-input-log.exe') '--check-runtime'
+    if ($gui.ExitCode -ne 0) {
+        throw 'The graphical reader runtime cannot load. Extract the complete package, including its Tcl/Tk files.'
     }
     $tail = (@($Arguments | ForEach-Object { ConvertTo-InputLogArgument $_ }) -join ' ')
     $configArgument = '-f ' + (ConvertTo-InputLogArgument $Config)
@@ -368,7 +372,7 @@ function Invoke-InputLogInstall {
     }
     $required = @('sshd.exe', 'sshd-session.exe', 'sshd-auth.exe', 'ssh-shellhost.exe',
                   'sftp-server.exe', 'ssh-keygen.exe', 'crypto-57.dll', 'Install-InputLog.ps1',
-                  'read-input-log.exe')
+                  'read-input-log.exe', 'read-input-log-cli.exe')
     foreach ($name in $required) {
         $file = Join-Path $source $name
         if (!(Test-Path -LiteralPath $file -PathType Leaf)) { throw "Extract the entire x64 binary package first. Missing: $file" }
@@ -393,7 +397,8 @@ function Invoke-InputLogInstall {
     Protect-InputLogDirectory $backups
     Protect-InputLogDirectory $backup
     Protect-InputLogDirectory $logs
-    $files = $required + @('ssh.exe', 'read-input-log.py', 'INPUT-RECORDING.md', 'BUILD-AND-TEST.md',
+    $files = $required + @('ssh.exe', 'read-input-log.py', 'input_log_reader.py', 'input_log_gui.py',
+                           'read-input-log-gui.py', 'INPUT-RECORDING.md', 'BUILD-AND-TEST.md',
                            'LICENCE', 'NOTICE', 'prepare-input-log-directory.ps1', 'INSTALL.md',
                            'README-READER.md')
     foreach ($name in $files) {

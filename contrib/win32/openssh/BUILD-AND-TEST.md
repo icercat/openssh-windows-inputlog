@@ -25,7 +25,8 @@ The binary package includes matching `sshd.exe`, `sshd-session.exe`,
 These server components must be kept together. The binary package includes
 `Install-InputLog.ps1` for replacement of an existing LocalSystem sshd service
 on the destination server; see `INSTALL.md`. It does not include ssh-agent.
-`read-input-log.exe` and `read-input-log-runtime/` are included in both the
+The graphical `read-input-log.exe`, console `read-input-log-cli.exe`, and
+`read-input-log-runtime/` are included in both the
 complete server package and a standalone `read-input-log-Windows-x64.zip`.
 The reader does not require Python to be installed on the destination machine.
 
@@ -77,8 +78,10 @@ only Windows system DLLs and does not require a separate VCRUNTIME140.dll.
 
 The reader recipe creates a workspace-local Python virtual environment and
 installs the pinned packaging dependencies from PyPI. It uses PyInstaller's
-console/folder-bundle mode with `--contents-directory read-input-log-runtime`
-and no UPX compression. Keep the EXE and runtime folder together. The runtime
+shared `reader.spec` dependency graph to produce a windowed GUI EXE and a
+console CLI EXE, in folder-bundle mode with `read-input-log-runtime` and no UPX
+compression. It bundles Tcl/Tk for the GUI. Keep both EXEs and the runtime folder
+together. The runtime
 is loaded from the protected installation directory, rather than extracting a
 single-file archive each time privileged logs are read. See
 [PyInstaller operating modes](https://pyinstaller.org/en/stable/operating-mode.html).
@@ -112,13 +115,23 @@ All following checks passed against the final executables:
 - Nine Python reader tests: binary bytes, split UTF-8 and separate channels,
   sequence validation, length mismatch, escaped terminal controls, truncated
   JSON, partial final character, empty file, and non-object JSON.
-- Nine black-box EXE tests passed from a relocated package directory containing
+- Eleven black-box EXE tests passed from a relocated package directory containing
   spaces, with Python removed from PATH and PYTHONHOME/PYTHONPATH pointing to a
   nonexistent directory: help, output matching the Python reader, Chinese text,
   separate channels, safe escaped controls, binary extraction, refusal to
-  overwrite files, bad arguments, malformed recordings, and partial UTF-8 tails.
+  overwrite files, bad arguments, malformed recordings, and partial UTF-8 tails;
+  GUI/CLI PE subsystem types and the GUI's headless Tcl runtime check.
   This simulates missing external Python; a separate clean Windows VM was not
   used. No changes were made to the machine's installed Python.
+- Eleven GUI model/widget tests cover Unicode and visible controls, channel/
+  event/search filters, snapshot-consistent raw export, UTF-8 text export,
+  overwrite protection, corrupt files, size limits, loading/selection, native
+  save callbacks, pagination across 501 events, stale-data clearing after
+  errors, and export-button visibility at the minimum window size. The shared
+  stream decoder is also checked for retaining raw input bytes.
+- A real bundled GUI preview was opened with a synthetic SSH recording. Chinese
+  input selection/details and the native text-save dialog were inspected. The
+  preview did not access or change an installed SSH service.
 - PowerShell directory helper parsed without syntax errors. Its elevated
   deployment path was not executed in this environment.
 - Installer tests passed in Windows PowerShell 5.1 and PowerShell 7 using mock
@@ -130,8 +143,8 @@ All following checks passed against the final executables:
   handling. The real patched daemon's preflight was exercised, including
   detection of conflicting recording settings. Elevated installation was not
   executed on this PC.
-  Reader/runtime copying, rejection of an incomplete reader package before
-  changing the service, and the real reader EXE's preflight help command also
+  GUI/CLI/runtime copying, rejection of an incomplete reader package before
+  changing the service, and the real CLI help/GUI runtime preflight commands also
   passed in both PowerShell versions.
 - Current-directory defaults were verified with a working folder containing
   spaces and the source package in another directory: binaries, logs, backups,
@@ -167,5 +180,6 @@ location if your environment restricts temporary file access.
 Executable reader checks (after `build-reader.cmd`):
 
 ```powershell
-python .\regress\windows-input-log\test-reader-exe.py --reader 'C:\build\work\reader-dist\read-input-log\read-input-log.exe' --work-directory 'C:\build\work\test-scratch'
+python .\regress\windows-input-log\test-reader-exe.py --reader 'C:\build\work\reader-dist\read-input-log\read-input-log-cli.exe' --work-directory 'C:\build\work\test-scratch'
+python .\regress\windows-input-log\test-reader-gui.py --work-directory 'C:\build\work\test-scratch'
 ```

@@ -13,7 +13,7 @@ $package = Join-Path $scratch 'package'
 [IO.Directory]::CreateDirectory($package) | Out-Null
 foreach ($name in 'sshd.exe','sshd-session.exe','sshd-auth.exe','ssh-shellhost.exe',
                  'sftp-server.exe','ssh-keygen.exe','crypto-57.dll','Install-InputLog.ps1',
-                 'read-input-log.exe') {
+                 'read-input-log.exe','read-input-log-cli.exe') {
     [IO.File]::WriteAllText((Join-Path $package $name), "dummy-$name")
 }
 $runtimeFixture = Join-Path $package 'read-input-log-runtime'

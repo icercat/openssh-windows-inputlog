@@ -142,21 +142,25 @@ Long payloads are split into records of at most 16 KiB. Concatenate `stdin`
 bytes by channel and sequence to recover the exact input stream. Concatenate
 `exec` or `effective-command` chunks to recover a long command string.
 
-Read as Administrator. The included `read-input-log.exe` produces JSONL with
-readable text and escaped control characters. Keep its `read-input-log-runtime`
-directory next to the EXE; no separate Python installation is needed:
+Read as Administrator. Double-click `read-input-log.exe` to open the graphical
+viewer, select a recording, inspect its input, and export filtered text or a
+channel's exact raw stdin. The Traditional Chinese GUI includes Unicode display,
+search, channel/event filters, hexadecimal details, and pagination. Keep the
+`read-input-log-runtime` directory alongside both EXEs; no Python installation
+is needed. The console version is now `read-input-log-cli.exe`:
 
 ```powershell
-.\read-input-log.exe '.\input-logs\input-123-example.jsonl'
-.\read-input-log.exe '.\input-logs\input-123-example.jsonl' > readable.txt
+.\read-input-log-cli.exe '.\input-logs\input-123-example.jsonl'
+.\read-input-log-cli.exe '.\input-logs\input-123-example.jsonl' > readable.txt
 # Recover exact input bytes for a selected channel into a NEW file:
-.\read-input-log.exe recording.jsonl --channel 1 --raw-stdin stdin.bin
+.\read-input-log-cli.exe recording.jsonl --channel 1 --raw-stdin stdin.bin
 ```
 
 Those reader examples use the automated installer's working-directory default.
 Substitute your chosen log path if you used the manual configuration above.
-The original `read-input-log.py` remains available as source and accepts the
-same arguments. See `README-READER.md` for the standalone Windows package.
+The original `read-input-log.py` remains as a console entry point using the
+shared `input_log_reader.py` module. See `README-READER.md` for GUI instructions
+and the standalone Windows package.
 
 Example decoded record:
 

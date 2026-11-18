@@ -10,5 +10,5 @@ if not exist "work\reader-build-venv\Scripts\python.exe" (
 )
 "work\reader-build-venv\Scripts\python.exe" -m pip install --disable-pip-version-check --no-input --index-url https://pypi.org/simple -r work\openssh-portable\contrib\win32\openssh\inputlog-build\reader-build-requirements.txt
 if errorlevel 1 exit /b 1
-"work\reader-build-venv\Scripts\python.exe" -m PyInstaller --noconfirm --onedir --console --noupx --name read-input-log --contents-directory read-input-log-runtime --distpath work\reader-dist --workpath work\reader-build --specpath work\reader-build work\openssh-portable\contrib\win32\openssh\read-input-log.py
+"work\reader-build-venv\Scripts\python.exe" -m PyInstaller --noconfirm --distpath work\reader-dist --workpath work\reader-build-gui work\openssh-portable\contrib\win32\openssh\inputlog-build\reader.spec
 exit /b %ERRORLEVEL%

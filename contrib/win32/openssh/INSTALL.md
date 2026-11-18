@@ -25,7 +25,8 @@ from another folder. All service/configuration paths are saved as absolute
 paths so they keep working after a restart or a later change of directory.
 Keep this folder in place while the service uses it.
 The installed release includes `read-input-log.exe` and its
-`read-input-log-runtime` directory. The installer copies and checks both.
+`read-input-log-runtime` directory, plus the console `read-input-log-cli.exe`.
+The installer copies and checks the GUI, CLI and shared runtime.
 
 The execution-policy override applies to this one PowerShell process. The
 package is an experimental, unsigned custom build. Run from a local console or
@@ -83,14 +84,15 @@ list the recordings:
 Get-ChildItem .\input-logs\*.jsonl
 ```
 
-The package's `read-input-log.exe` turns a recording into readable text.
-You do not need to install Python:
+Double-click the package's **read-input-log.exe** to open the Traditional Chinese
+GUI. Click **開啟紀錄檔…**, select a recording, and use the search/channel/event
+filters or export buttons. No Python installation is needed. For console use:
 
 ```powershell
-.\read-input-log.exe '.\input-logs\input-123-example.jsonl' > readable.txt
+.\read-input-log-cli.exe '.\input-logs\input-123-example.jsonl' > readable.txt
 ```
 
-Keep `read-input-log-runtime` next to the EXE. The standalone reader ZIP can
+Keep `read-input-log-runtime` next to both EXEs. The standalone reader ZIP can
 also be extracted on another Windows x64 machine to read copied recordings.
 See `README-READER.md` for channel selection and exact input extraction.
 

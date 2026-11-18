@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import struct
 import subprocess
 import sys
 import unittest
@@ -16,9 +17,10 @@ options = parser.parse_args()
 scratch = options.work_directory.resolve() / ('reader-exe-' + uuid.uuid4().hex)
 package = scratch / 'standalone package with spaces'
 package.mkdir(parents=True)
-shutil.copy2(options.reader, package / 'read-input-log.exe')
+shutil.copy2(options.reader, package / 'read-input-log-cli.exe')
+shutil.copy2(options.reader.parent / 'read-input-log.exe', package / 'read-input-log.exe')
 shutil.copytree(options.reader.parent / 'read-input-log-runtime', package / 'read-input-log-runtime')
-executable = package / 'read-input-log.exe'
+executable = package / 'read-input-log-cli.exe'
 env = os.environ.copy()
 env['PATH'] = str(Path(os.environ['SystemRoot']) / 'System32')
 env['PYTHONHOME'] = env['PYTHONPATH'] = str(scratch / 'python-is-not-installed-here')
@@ -45,6 +47,17 @@ class ExecutableReaderTests(unittest.TestCase):
         result = self.run_exe('--help')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn(b'--raw-stdin', result.stdout)
+
+    def test_gui_is_windowed_and_cli_has_a_console(self):
+        for name, expected in [('read-input-log.exe', 2), ('read-input-log-cli.exe', 3)]:
+            data = (package / name).read_bytes()
+            pe = struct.unpack_from('<I', data, 60)[0]
+            self.assertEqual(struct.unpack_from('<H', data, pe + 24 + 68)[0], expected)
+
+    def test_gui_runtime_without_external_python(self):
+        result = subprocess.run([str(package / 'read-input-log.exe'), '--check-runtime'],
+                                env=env, cwd=scratch, capture_output=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_matches_python_reader_for_unicode_channels_and_controls(self):
         data = '中文'.encode()
